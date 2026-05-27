@@ -2064,6 +2064,11 @@ function mainapi:CreateCategory(categorysettings)
 			end
 
 			self.Bind = table.clone(tab)
+			if mouse and mainapi.Loaded then
+				task.spawn(function()
+					mainapi:Save()
+				end)
+			end
 			if mouse then
 				modulebutton.Text = #tab <= 0 and 'Unbound' or 'Bound to '..table.concat(tab, ' + '):upper()
 				task.delay(1, function()

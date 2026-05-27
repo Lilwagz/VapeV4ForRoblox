@@ -3809,6 +3809,11 @@ function mainapi:CreateCategory(categorysettings)
 			end
 
 			self.Bind = table.clone(tab)
+			if mouse and mainapi.Loaded then
+				task.spawn(function()
+					mainapi:Save()
+				end)
+			end
 			if mouse then
 				bindcovertext.Text = #tab <= 0 and 'BIND REMOVED' or 'BOUND TO'
 				bindcover.Size = UDim2.fromOffset(getfontsize(bindcovertext.Text, bindcovertext.TextSize).X + 20, 40)

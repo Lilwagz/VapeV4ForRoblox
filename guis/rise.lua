@@ -1790,12 +1790,17 @@ function mainapi:CreateCategory(categorysettings)
 		modulesettings.Function = modulesettings.Function or function() end
 		addMaid(moduleapi)
 
-		function moduleapi:SetBind(tab)
+		function moduleapi:SetBind(tab, mouse)
 			if tab.Mobile then
 				return
 			end
 
 			self.Bind = table.clone(tab)
+			if mouse and mainapi.Loaded then
+				task.spawn(function()
+					mainapi:Save()
+				end)
+			end
 		end
 
 		function moduleapi:Toggle(multiple)
