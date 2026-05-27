@@ -131,6 +131,15 @@ local isfile = isfile or function(file)
 	end)
 	return suc and res ~= nil and res ~= ''
 end
+local watermark = '--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.'
+local commitFile = 'newvape/profiles/commit.txt'
+local cachedCommit
+local assetCache = {}
+
+local function getCommit()
+	cachedCommit = cachedCommit or (isfile(commitFile) and readfile(commitFile) or 'main')
+	return cachedCommit
+end
 
 local getfontsize = function(text, size, font)
 	fontsize.Text = text
@@ -244,13 +253,13 @@ local function downloadFile(path, func)
 	if not isfile(path) then
 		createDownloader(path)
 		local suc, res = pcall(function()
-			return game:HttpGet('https://raw.githubusercontent.com/7GrandDadPGN/VapeV4ForRoblox/'..readfile('newvape/profiles/commit.txt')..'/'..select(1, path:gsub('newvape/', '')), true)
+			return game:HttpGet('https://raw.githubusercontent.com/Lilwagz/VapeV4ForRoblox/'..getCommit()..'/'..path:gsub('^newvape/', ''), true)
 		end)
 		if not suc or res == '404: Not Found' then
 			error(res)
 		end
-		if path:find('.lua') then
-			res = '--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.\n'..res
+		if path:sub(-4) == '.lua' then
+			res = watermark..'\n'..res
 		end
 		writefile(path, res)
 	end
@@ -258,7 +267,9 @@ local function downloadFile(path, func)
 end
 
 getcustomasset = not inputService.TouchEnabled and assetfunction and function(path)
-	return downloadFile(path, assetfunction)
+	if assetCache[path] then return assetCache[path] end
+	assetCache[path] = downloadFile(path, assetfunction)
+	return assetCache[path]
 end or function(path)
 	return getcustomassets[path] or ''
 end
@@ -283,6 +294,14 @@ local function loadJson(path)
 		return httpService:JSONDecode(readfile(path))
 	end)
 	return suc and type(res) == 'table' and res or nil
+end
+
+local function writefileIfChanged(path, data)
+	local suc, current = pcall(function()
+		return isfile(path) and readfile(path) or nil
+	end)
+	if suc and current == data then return end
+	writefile(path, data)
 end
 
 local function makeDraggable(obj, window)
@@ -2450,8 +2469,8 @@ function mainapi:Save(newprofile)
 		}
 	end
 
-	writefile('newvape/profiles/'..game.GameId..'.gui.txt', httpService:JSONEncode(guidata))
-	writefile('newvape/profiles/'..self.Profile..self.Place..'.txt', httpService:JSONEncode(savedata))
+	writefileIfChanged('newvape/profiles/'..game.GameId..'.gui.txt', httpService:JSONEncode(guidata))
+	writefileIfChanged('newvape/profiles/'..self.Profile..self.Place..'.txt', httpService:JSONEncode(savedata))
 end
 
 function mainapi:SaveOptions(object, savedoptions)
@@ -2845,7 +2864,7 @@ mainapi.Categories.Main:CreateDropdown({
 			if shared.VapeDeveloper then
 				loadstring(readfile('newvape/loader.lua'), 'loader')()
 			else
-				loadstring(game:HttpGet('https://raw.githubusercontent.com/7GrandDadPGN/VapeV4ForRoblox/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true))()
+				loadstring(game:HttpGet('https://raw.githubusercontent.com/Lilwagz/VapeV4ForRoblox/'..getCommit()..'/loader.lua', true))()
 			end
 		end
 	end
@@ -2873,7 +2892,7 @@ mainapi.Categories.Main:CreateButton({
 		if shared.VapeDeveloper then
 			loadstring(readfile('newvape/loader.lua'), 'loader')()
 		else
-			loadstring(game:HttpGet('https://raw.githubusercontent.com/7GrandDadPGN/VapeV4ForRoblox/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true))()
+			loadstring(game:HttpGet('https://raw.githubusercontent.com/Lilwagz/VapeV4ForRoblox/'..getCommit()..'/loader.lua', true))()
 		end
 	end
 })

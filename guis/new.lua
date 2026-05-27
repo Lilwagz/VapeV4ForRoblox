@@ -77,7 +77,6 @@ local getcustomassets = {
 	['newvape/assets/new/colorpreview.png'] = 'rbxassetid://14368311578',
 	['newvape/assets/new/combaticon.png'] = 'rbxassetid://14368312652',
 	['newvape/assets/new/customsettings.png'] = 'rbxassetid://14403726449',
-	['newvape/assets/new/discord.png'] = '',
 	['newvape/assets/new/dots.png'] = 'rbxassetid://14368314459',
 	['newvape/assets/new/edit.png'] = 'rbxassetid://14368315443',
 	['newvape/assets/new/expandicon.png'] = 'rbxassetid://14368353032',
@@ -129,6 +128,15 @@ local isfile = isfile or function(file)
 		return readfile(file)
 	end)
 	return suc and res ~= nil and res ~= ''
+end
+local watermark = '--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.'
+local commitFile = 'newvape/profiles/commit.txt'
+local cachedCommit
+local assetCache = {}
+
+local function getCommit()
+	cachedCommit = cachedCommit or (isfile(commitFile) and readfile(commitFile) or 'main')
+	return cachedCommit
 end
 
 local getfontsize = function(text, size, font)
@@ -314,13 +322,13 @@ local function downloadFile(path, func)
 	if not isfile(path) then
 		createDownloader(path)
 		local suc, res = pcall(function()
-			return game:HttpGet('https://raw.githubusercontent.com/7GrandDadPGN/VapeV4ForRoblox/'..readfile('newvape/profiles/commit.txt')..'/'..select(1, path:gsub('newvape/', '')), true)
+			return game:HttpGet('https://raw.githubusercontent.com/Lilwagz/VapeV4ForRoblox/'..getCommit()..'/'..path:gsub('^newvape/', ''), true)
 		end)
 		if not suc or res == '404: Not Found' then
 			error(res)
 		end
-		if path:find('.lua') then
-			res = '--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.\n'..res
+		if path:sub(-4) == '.lua' then
+			res = watermark..'\n'..res
 		end
 		writefile(path, res)
 	end
@@ -328,7 +336,9 @@ local function downloadFile(path, func)
 end
 
 getcustomasset = not inputService.TouchEnabled and assetfunction and function(path)
-	return downloadFile(path, assetfunction)
+	if assetCache[path] then return assetCache[path] end
+	assetCache[path] = downloadFile(path, assetfunction)
+	return assetCache[path]
 end or function(path)
 	return getcustomassets[path] or ''
 end
@@ -353,6 +363,14 @@ local function loadJson(path)
 		return httpService:JSONDecode(readfile(path))
 	end)
 	return suc and type(res) == 'table' and res or nil
+end
+
+local function writefileIfChanged(path, data)
+	local suc, current = pcall(function()
+		return isfile(path) and readfile(path) or nil
+	end)
+	if suc and current == data then return end
+	writefile(path, data)
 end
 
 local function makeDraggable(gui, window)
@@ -2521,13 +2539,6 @@ function mainapi:CreateGUI()
 	settingsicon.Image = getcustomasset('newvape/assets/new/guisettings.png')
 	settingsicon.ImageColor3 = color.Light(uipallet.Main, 0.37)
 	settingsicon.Parent = settingsbutton
-	local discordbutton = Instance.new('ImageButton')
-	discordbutton.Size = UDim2.fromOffset(16, 16)
-	discordbutton.Position = UDim2.new(1, -56, 0, 11)
-	discordbutton.BackgroundTransparency = 1
-	discordbutton.Image = getcustomasset('newvape/assets/new/discord.png')
-	discordbutton.Parent = window
-	addTooltip(discordbutton, 'Join discord')
 	local settingspane = Instance.new('TextButton')
 	settingspane.Size = UDim2.fromScale(1, 1)
 	settingspane.BackgroundColor3 = color.Dark(uipallet.Main, 0.02)
@@ -2561,7 +2572,7 @@ function mainapi:CreateGUI()
 	settingsversion.Position = UDim2.new(0, 0, 1, -16)
 	settingsversion.BackgroundTransparency = 1
 	settingsversion.Text = 'Vape '..mainapi.Version..' '..(
-		isfile('newvape/profiles/commit.txt') and readfile('newvape/profiles/commit.txt'):sub(1, 6) or ''
+		getCommit():sub(1, 6)
 	)..' '
 	settingsversion.TextColor3 = color.Dark(uipallet.Text, 0.43)
 	settingsversion.TextXAlignment = Enum.TextXAlignment.Right
@@ -3563,37 +3574,6 @@ function mainapi:CreateGUI()
 	end)
 	close.MouseButton1Click:Connect(function()
 		settingspane.Visible = false
-	end)
-	discordbutton.MouseButton1Click:Connect(function()
-		task.spawn(function()
-			local body = httpService:JSONEncode({
-				nonce = httpService:GenerateGUID(false),
-				args = {
-					invite = {code = '5gJqhQmrdS'},
-					code = '5gJqhQmrdS'
-				},
-				cmd = 'INVITE_BROWSER'
-			})
-
-			for i = 1, 14 do
-				task.spawn(function()
-					request({
-						Method = 'POST',
-						Url = 'http://127.0.0.1:64'..(53 + i)..'/rpc?v=1',
-						Headers = {
-							['Content-Type'] = 'application/json',
-							Origin = 'https://discord.com'
-						},
-						Body = body
-					})
-				end)
-			end
-		end)
-
-		task.spawn(function()
-			tooltip.Text = 'Copied!'
-			setclipboard('https://discord.gg/5gJqhQmrdS')
-		end)
 	end)
 	settingsbutton.MouseEnter:Connect(function()
 		settingsicon.ImageColor3 = uipallet.Text
@@ -5594,8 +5574,8 @@ function mainapi:Save(newprofile)
 		}
 	end
 
-	writefile('newvape/profiles/'..game.GameId..'.gui.txt', httpService:JSONEncode(guidata))
-	writefile('newvape/profiles/'..self.Profile..self.Place..'.txt', httpService:JSONEncode(savedata))
+	writefileIfChanged('newvape/profiles/'..game.GameId..'.gui.txt', httpService:JSONEncode(guidata))
+	writefileIfChanged('newvape/profiles/'..self.Profile..self.Place..'.txt', httpService:JSONEncode(savedata))
 end
 
 function mainapi:SaveOptions(object, savedoptions)
@@ -5669,16 +5649,6 @@ clickgui.Size = UDim2.fromScale(1, 1)
 clickgui.BackgroundTransparency = 1
 clickgui.Visible = false
 clickgui.Parent = scaledgui
-local scarcitybanner = Instance.new('TextLabel')
-scarcitybanner.Size = UDim2.fromScale(1, 0.02)
-scarcitybanner.Position = UDim2.fromScale(0, 0.97)
-scarcitybanner.BackgroundTransparency = 1
-scarcitybanner.Text = 'A new discord has been created, click the discord icon to join.'
-scarcitybanner.TextScaled = true
-scarcitybanner.TextColor3 = Color3.new(1, 1, 1)
-scarcitybanner.TextStrokeTransparency = 0.5
-scarcitybanner.FontFace = uipallet.Font
-scarcitybanner.Parent = clickgui
 local modal = Instance.new('TextButton')
 modal.BackgroundTransparency = 1
 modal.Modal = true
@@ -5911,7 +5881,7 @@ general:CreateButton({
 		if shared.VapeDeveloper then
 			loadstring(readfile('newvape/loader.lua'), 'loader')()
 		else
-			loadstring(game:HttpGet('https://raw.githubusercontent.com/7GrandDadPGN/VapeV4ForRoblox/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true))()
+			loadstring(game:HttpGet('https://raw.githubusercontent.com/Lilwagz/VapeV4ForRoblox/'..getCommit()..'/loader.lua', true))()
 		end
 	end,
 	Tooltip = 'This will set your profile to the default settings of Vape'
@@ -5930,7 +5900,7 @@ general:CreateButton({
 		if shared.VapeDeveloper then
 			loadstring(readfile('newvape/loader.lua'), 'loader')()
 		else
-			loadstring(game:HttpGet('https://raw.githubusercontent.com/7GrandDadPGN/VapeV4ForRoblox/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true))()
+			loadstring(game:HttpGet('https://raw.githubusercontent.com/Lilwagz/VapeV4ForRoblox/'..getCommit()..'/loader.lua', true))()
 		end
 	end,
 	Tooltip = 'Reloads vape for debugging purposes'
@@ -6038,7 +6008,7 @@ guipane:CreateDropdown({
 			if shared.VapeDeveloper then
 				loadstring(readfile('newvape/loader.lua'), 'loader')()
 			else
-				loadstring(game:HttpGet('https://raw.githubusercontent.com/7GrandDadPGN/VapeV4ForRoblox/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true))()
+				loadstring(game:HttpGet('https://raw.githubusercontent.com/Lilwagz/VapeV4ForRoblox/'..getCommit()..'/loader.lua', true))()
 			end
 		end
 	end,

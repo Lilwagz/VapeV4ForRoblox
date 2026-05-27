@@ -31,6 +31,7 @@ local httpService = cloneref(game:GetService('HttpService'))
 local fontsize = Instance.new('GetTextBoundsParams')
 fontsize.Width = math.huge
 local notifications
+local assetfunction = getcustomasset
 local getcustomasset
 local clickgui
 local expanded
@@ -59,6 +60,15 @@ local isfile = isfile or function(file)
 	local suc, res = pcall(function() return readfile(file) end)
 	return suc and res ~= nil and res ~= ''
 end
+local watermark = '--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.'
+local commitFile = 'newvape/profiles/commit.txt'
+local cachedCommit
+local assetCache = {}
+
+local function getCommit()
+	cachedCommit = cachedCommit or (isfile(commitFile) and readfile(commitFile) or 'main')
+	return cachedCommit
+end
 
 local getfontsize = function(text, size, font)
 	fontsize.Text = text
@@ -70,16 +80,20 @@ end
 
 local function downloadFile(path, func)
 	if not isfile(path) then
-		local suc, res = pcall(function() return game:HttpGet('https://raw.githubusercontent.com/7GrandDadPGN/VapeV4ForRoblox/'..readfile('newvape/profiles/commit.txt')..'/'..select(1, path:gsub('newvape/', '')), true) end)
+		local suc, res = pcall(function()
+			return game:HttpGet('https://raw.githubusercontent.com/Lilwagz/VapeV4ForRoblox/'..getCommit()..'/'..path:gsub('^newvape/', ''), true)
+		end)
 		if not suc or res == '404: Not Found' then error(res) end
-		if path:find('.lua') then res = '--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.\n'..res end
+		if path:sub(-4) == '.lua' then res = watermark..'\n'..res end
 		writefile(path, res)
 	end
 	return (func or readfile)(path)
 end
 
-getcustomasset = not inputService.TouchEnabled and getcustomasset and function(path)
-	return downloadFile(path, getcustomasset)
+getcustomasset = not inputService.TouchEnabled and assetfunction and function(path)
+	if assetCache[path] then return assetCache[path] end
+	assetCache[path] = downloadFile(path, assetfunction)
+	return assetCache[path]
 end or function(path)
 	return getcustomassets[path] or ''
 end

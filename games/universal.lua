@@ -11,16 +11,21 @@ local isfile = isfile or function(file)
 	end)
 	return suc and res ~= nil and res ~= ''
 end
+local watermark = '--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.'
+local commitFile = 'newvape/profiles/commit.txt'
+local cachedCommit
+
 local function downloadFile(path, func)
 	if not isfile(path) then
 		local suc, res = pcall(function()
-			return game:HttpGet('https://raw.githubusercontent.com/7GrandDadPGN/VapeV4ForRoblox/'..readfile('newvape/profiles/commit.txt')..'/'..select(1, path:gsub('newvape/', '')), true)
+			cachedCommit = cachedCommit or (isfile(commitFile) and readfile(commitFile) or 'main')
+			return game:HttpGet('https://raw.githubusercontent.com/Lilwagz/VapeV4ForRoblox/'..cachedCommit..'/'..path:gsub('^newvape/', ''), true)
 		end)
 		if not suc or res == '404: Not Found' then
 			error(res)
 		end
-		if path:find('.lua') then
-			res = '--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.\n'..res
+		if path:sub(-4) == '.lua' then
+			res = watermark..'\n'..res
 		end
 		writefile(path, res)
 	end
@@ -1047,7 +1052,7 @@ run(function()
 	CPS = AutoClicker:CreateTwoSlider({
 		Name = 'CPS',
 		Min = 1,
-		Max = 20,
+		Max = 500,
 		DefaultMin = 8,
 		DefaultMax = 12
 	})
@@ -7000,6 +7005,44 @@ run(function()
 end)
 	
 run(function()
+	local oldCreateNotification
+	local oldNotifications
+	local oldToggleNotifications
+
+	vape.Legit:CreateModule({
+		Name = 'NoNotifications',
+		Function = function(callback)
+			if callback then
+				oldCreateNotification = oldCreateNotification or vape.CreateNotification
+				oldNotifications = vape.Notifications and vape.Notifications.Enabled
+				oldToggleNotifications = vape.ToggleNotifications and vape.ToggleNotifications.Enabled
+				if vape.Notifications then
+					vape.Notifications.Enabled = false
+				end
+				if vape.ToggleNotifications then
+					vape.ToggleNotifications.Enabled = false
+				end
+				vape.CreateNotification = function() end
+			else
+				if oldCreateNotification then
+					vape.CreateNotification = oldCreateNotification
+				end
+				if vape.Notifications and oldNotifications ~= nil then
+					vape.Notifications.Enabled = oldNotifications
+				end
+				if vape.ToggleNotifications and oldToggleNotifications ~= nil then
+					vape.ToggleNotifications.Enabled = oldToggleNotifications
+				end
+				oldCreateNotification = nil
+				oldNotifications = nil
+				oldToggleNotifications = nil
+			end
+		end,
+		Tooltip = 'Silences Vape notifications while enabled'
+	})
+end)
+
+run(function()
 	local Atmosphere
 	local Toggles = {}
 	local newobjects, oldobjects = {}, {}
@@ -8170,4 +8213,3 @@ run(function()
 	})
 	
 end)
-	
