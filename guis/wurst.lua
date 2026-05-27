@@ -92,6 +92,10 @@ end
 
 getcustomasset = not inputService.TouchEnabled and assetfunction and function(path)
 	if assetCache[path] then return assetCache[path] end
+	if getcustomassets[path] then
+		assetCache[path] = getcustomassets[path]
+		return assetCache[path]
+	end
 	assetCache[path] = downloadFile(path, assetfunction)
 	return assetCache[path]
 end or function(path)

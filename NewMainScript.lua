@@ -52,7 +52,7 @@ if not shared.VapeDeveloper then
 	commit = commit and subbed:sub(commit + 13, commit + 52) or nil
 	commit = commit and #commit == 40 and commit or 'main'
 	local oldCommit = isfile(commitFile) and readfile(commitFile) or ''
-	if commit == 'main' or oldCommit ~= commit then
+	if oldCommit ~= '' and oldCommit ~= commit then
 		wipeFolder('newvape')
 		wipeFolder('newvape/games')
 		wipeFolder('newvape/guis')
