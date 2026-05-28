@@ -8,275 +8,219 @@ local inputService = cloneref(game:GetService('UserInputService'))
 
 local lplr = playersService.LocalPlayer
 local vape = shared.vape
-local entitylib = vape.Libraries.entity
 
 local store = {
-	remotes = {},
-	connections = {},
-	triggerbot = {
-		canGrab = true,
-		lastCheck = 0,
-		lastTarget = nil,
-		lastHitTime = 0,
-		respawnUntil = 0
-	}
+    triggerbot = {
+        Enabled = false,
+        canGrab = true,
+        maxDistance = 20,
+        targetMemory = 0.07,
+        checkThrottle = 0.003,
+        lastCheck = 0,
+        lastTarget = nil,
+        lastHitTime = 0,
+        respawnUntil = 0,
+        lastToggleTime = 0,
+        toggleDebounce = 0.18
+    }
 }
 
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
 local function notif(...)
-	return vape:CreateNotification(...)
+    return vape:CreateNotification(...)
 end
 
 local function getCharacter(player)
-	player = player or lplr
-	return player.Character
+    player = player or lplr
+    return player.Character
 end
 
 local function getRoot(player)
-	local character = getCharacter(player)
-	return character and character:FindFirstChild('HumanoidRootPart') or nil
-end
-
-local function findRemote(name)
-	local cached = store.remotes[name]
-	if cached and cached.Parent then
-		return cached
-	end
-
-	for _, inst in replicatedStorage:GetDescendants() do
-		if inst.Name == name and (inst:IsA('RemoteEvent') or inst:IsA('RemoteFunction')) then
-			store.remotes[name] = inst
-			return inst
-		end
-	end
+    local character = getCharacter(player)
+    return character and character:FindFirstChild('HumanoidRootPart')
 end
 
 local function isTyping()
-	return inputService:GetFocusedTextBox() ~= nil
+    return inputService:GetFocusedTextBox() ~= nil
 end
 
 local function isCharacterInAnyPlot(character)
-	if not character then return false end
-	local root = character:FindFirstChild('HumanoidRootPart')
-	if not root then return false end
-	local plotFolder = workspace:FindFirstChild('PlotItems')
-		and workspace.PlotItems:FindFirstChild('PlayersInPlots')
-	if not plotFolder then return false end
-
-	for _, plot in plotFolder:GetChildren() do
-		local plotPart = plot:FindFirstChildWhichIsA('BasePart')
-			or plot:FindFirstChildWhichIsA('Model')
-		if not plotPart then continue end
-
-		local part = plotPart:IsA('BasePart') and plotPart
-			or plotPart:FindFirstChildWhichIsA('BasePart')
-		if part and (root.Position - part.Position).Magnitude < 50 then
-			return true
-		end
-	end
-
-	return false
+    if not character then return false end
+    local root = character:FindFirstChild('HumanoidRootPart')
+    if not root then return false end
+    local plotFolder = workspace:FindFirstChild('PlotItems') and workspace.PlotItems:FindFirstChild('PlayersInPlots')
+    if not plotFolder then return false end
+    for _, plot in ipairs(plotFolder:GetChildren()) do
+        local plotPart = plot:FindFirstChildWhichIsA('BasePart') or plot:FindFirstChildWhichIsA('Model')
+        if not plotPart then continue end
+        local part = plotPart:IsA('BasePart') and plotPart or plotPart:FindFirstChildWhichIsA('BasePart')
+        if part and (root.Position - part.Position).Magnitude < 50 then
+            return true
+        end
+    end
+    return false
 end
 
-vape:Clean(function()
-	for _, connection in store.connections do
-		connection:Disconnect()
-	end
+local function canRun()
+    local tb = store.triggerbot
+    if not tb.Enabled or not tb.canGrab then return false end
+    if isTyping() then return false end
+    if workspace:FindFirstChild('GrabParts') then return false end
+    if tick() < tb.respawnUntil then return false end
+    return true
+end
 
-	table.clear(store.connections)
-	table.clear(store.remotes)
-	table.clear(store)
+local function getTarget()
+    local tb = store.triggerbot
+    local char = lplr.Character
+    local myRoot = char and char:FindFirstChild('HumanoidRootPart')
+    if not myRoot then return nil end
+
+    local cam = workspace.CurrentCamera
+    if not cam then return nil end
+
+    rayParams.FilterDescendantsInstances = {char, workspace.Terrain}
+
+    local result = workspace:Raycast(cam.CFrame.Position, cam.CFrame.LookVector * tb.maxDistance, rayParams)
+    if not result then return nil end
+
+    local model = result.Instance:FindFirstAncestorWhichIsA('Model')
+    if not model or model == char then return nil end
+
+    local humanoid = model:FindFirstChildOfClass('Humanoid')
+    if not humanoid or humanoid.Health <= 0 then return nil end
+
+    local root = model:FindFirstChild('HumanoidRootPart') or model:FindFirstChild('Root')
+    if not root then return nil end
+
+    if (myRoot.Position - root.Position).Magnitude > tb.maxDistance then return nil end
+    if isCharacterInAnyPlot(model) then return nil end
+
+    local losParams = RaycastParams.new()
+    losParams.FilterDescendantsInstances = {char, workspace.Terrain}
+    losParams.FilterType = Enum.RaycastFilterType.Exclude
+    local losResult = workspace:Raycast(myRoot.Position, root.Position - myRoot.Position, losParams)
+    if losResult and not losResult.Instance:IsDescendantOf(model) then
+        return nil
+    end
+
+    return model
+end
+
+local function onHeartbeat()
+    if not canRun() then return end
+
+    local tb = store.triggerbot
+    local now = tick()
+
+    if now - tb.lastCheck < tb.checkThrottle then return end
+    tb.lastCheck = now
+
+    local target = getTarget()
+
+    if target then
+        tb.lastTarget = target
+        tb.lastHitTime = now
+    elseif tb.lastTarget and now - tb.lastHitTime > tb.targetMemory then
+        tb.lastTarget = nil
+    end
+
+    if not tb.lastTarget then return end
+
+    local myRoot = getRoot()
+    local enemyRoot = tb.lastTarget:FindFirstChild('HumanoidRootPart')
+
+    if not myRoot or not enemyRoot or (myRoot.Position - enemyRoot.Position).Magnitude > tb.maxDistance then
+        tb.lastTarget = nil
+        return
+    end
+
+    tb.canGrab = false
+
+    task.spawn(function()
+        if not tb.Enabled then
+            tb.canGrab = true
+            return
+        end
+
+        if mouse1press then
+            pcall(mouse1press)
+        else
+            notif('FTAP TriggerBot', 'mouse1press não disponível nesse executor.', 5, 'warning')
+            tb.Enabled = false
+            tb.canGrab = true
+            return
+        end
+
+        local start = tick()
+        while tb.Enabled and workspace:FindFirstChild('GrabParts') and tick() - start < 1.4 do
+            task.wait()
+        end
+
+        task.wait(0.016)
+        tb.canGrab = true
+        tb.lastTarget = nil
+    end)
+end
+
+local function setEnabled(state)
+    local tb = store.triggerbot
+    tb.Enabled = state
+
+    if tb.Connection then
+        pcall(function() tb.Connection:Disconnect() end)
+        tb.Connection = nil
+    end
+
+    if not tb.Enabled then
+        tb.canGrab = true
+        tb.lastTarget = nil
+    else
+        tb.Connection = runService.Heartbeat:Connect(onHeartbeat)
+        notif('FTAP TriggerBot', 'Ativado. F4 pra ligar/desligar.', 2, 'assets/VapeIcon.png')
+    end
+end
+
+-- Checagem de gamepass
+task.spawn(function()
+    local gp = replicatedStorage:FindFirstChild('GamepassEvents')
+    if not gp then return end
+
+    local rf = gp:FindFirstChild('CheckForGamepass')
+    if rf and rf:IsA('RemoteFunction') then
+        pcall(function()
+            if rf:InvokeServer(20837132) then
+                store.triggerbot.maxDistance = 29.3
+            end
+        end)
+    end
+
+    local notifier = gp:FindFirstChild('FurtherReachBoughtNotifier')
+    if notifier and notifier:IsA('RemoteEvent') then
+        notifier.OnClientEvent:Connect(function()
+            store.triggerbot.maxDistance = 29.3
+            notif('FTAP TriggerBot', 'Further Reach detectado (+9.3 studs)', 4)
+        end)
+    end
 end)
 
-run(function()
-	local TriggerBot
-	local MaxDistance
-	local TargetMemory
-	local CheckThrottle
-
-	local function canRun()
-		if not TriggerBot.Enabled or not store.triggerbot.canGrab then return false end
-		if isTyping() then return false end
-		if workspace:FindFirstChild('GrabParts') then return false end
-		if tick() < store.triggerbot.respawnUntil then return false end
-		return true
-	end
-
-	local function getTarget()
-		local character = lplr.Character
-		local myRoot = character and character:FindFirstChild('HumanoidRootPart')
-		local camera = workspace.CurrentCamera
-		if not myRoot or not camera then return end
-
-		rayParams.FilterDescendantsInstances = {character, workspace.Terrain}
-		local result = workspace:Raycast(camera.CFrame.Position, camera.CFrame.LookVector * MaxDistance.Value, rayParams)
-		if not result then return end
-
-		local model = result.Instance:FindFirstAncestorWhichIsA('Model')
-		if not model or model == character then return end
-
-		local humanoid = model:FindFirstChildOfClass('Humanoid')
-		local root = model:FindFirstChild('HumanoidRootPart') or model:FindFirstChild('Root')
-		if not humanoid or humanoid.Health <= 0 or not root then return end
-		if (myRoot.Position - root.Position).Magnitude > MaxDistance.Value then return end
-		if isCharacterInAnyPlot(model) then return end
-
-		local losParams = RaycastParams.new()
-		losParams.FilterDescendantsInstances = {character, workspace.Terrain}
-		losParams.FilterType = Enum.RaycastFilterType.Exclude
-		local losResult = workspace:Raycast(myRoot.Position, root.Position - myRoot.Position, losParams)
-		if losResult and not losResult.Instance:IsDescendantOf(model) then return end
-
-		return model
-	end
-
-	local function resetTarget()
-		store.triggerbot.canGrab = true
-		store.triggerbot.lastTarget = nil
-	end
-
-	local function onHeartbeat()
-		if not canRun() then return end
-
-		local now = tick()
-		if now - store.triggerbot.lastCheck < CheckThrottle.Value then return end
-		store.triggerbot.lastCheck = now
-
-		local target = getTarget()
-		if target then
-			store.triggerbot.lastTarget = target
-			store.triggerbot.lastHitTime = now
-		elseif store.triggerbot.lastTarget and now - store.triggerbot.lastHitTime > TargetMemory.Value then
-			store.triggerbot.lastTarget = nil
-		end
-
-		if not store.triggerbot.lastTarget then return end
-
-		local myRoot = getRoot()
-		local enemyRoot = store.triggerbot.lastTarget:FindFirstChild('HumanoidRootPart')
-		if not myRoot or not enemyRoot or (myRoot.Position - enemyRoot.Position).Magnitude > MaxDistance.Value then
-			store.triggerbot.lastTarget = nil
-			return
-		end
-
-		store.triggerbot.canGrab = false
-		task.spawn(function()
-			if not TriggerBot.Enabled then
-				resetTarget()
-				return
-			end
-
-			if not mouse1press then
-				notif('FTAP TriggerBot', 'mouse1press is not available in this executor.', 5, 'warning')
-				TriggerBot:Toggle(false)
-				resetTarget()
-				return
-			end
-
-			pcall(mouse1press)
-			local start = tick()
-			while TriggerBot.Enabled and workspace:FindFirstChild('GrabParts') and tick() - start < 1.4 do
-				task.wait()
-			end
-
-			task.wait()
-			resetTarget()
-		end)
-	end
-
-	local function checkReachGamepass()
-		local gamepassEvents = replicatedStorage:FindFirstChild('GamepassEvents')
-		if not gamepassEvents then return end
-
-		local remoteFunction = gamepassEvents:FindFirstChild('CheckForGamepass')
-		if remoteFunction and remoteFunction:IsA('RemoteFunction') then
-			pcall(function()
-				if remoteFunction:InvokeServer(20837132) then
-					MaxDistance:SetValue(29.3)
-				end
-			end)
-		end
-
-		local notifier = gamepassEvents:FindFirstChild('FurtherReachBoughtNotifier')
-		if notifier and notifier:IsA('RemoteEvent') then
-			TriggerBot:Clean(notifier.OnClientEvent:Connect(function()
-				MaxDistance:SetValue(29.3)
-			end))
-		end
-	end
-
-	TriggerBot = vape.Categories.Combat:CreateModule({
-		Name = 'TriggerBot',
-		Function = function(callback)
-			if callback then
-				store.triggerbot.canGrab = true
-				store.triggerbot.lastTarget = nil
-				store.triggerbot.lastCheck = 0
-				store.triggerbot.respawnUntil = tick() + 0.25
-				TriggerBot:Clean(runService.Heartbeat:Connect(onHeartbeat))
-				checkReachGamepass()
-				notif('FTAP TriggerBot', 'Enabled. Bound to F4 by default.', 2, 'assets/VapeIcon.png')
-			else
-				resetTarget()
-				if mouse1release then
-					pcall(mouse1release)
-				end
-			end
-		end,
-		ExtraText = function()
-			return store.triggerbot.canGrab and 'Ready' or 'Grabbing'
-		end,
-		Tooltip = 'Grabs a valid target when it enters your crosshair.'
-	})
-	TriggerBot:SetBind({'F4'})
-
-	MaxDistance = TriggerBot:CreateSlider({
-		Name = 'Distance',
-		Min = 1,
-		Max = 30,
-		Default = 20,
-		Decimal = 10,
-		Suffix = function(val)
-			return val == 1 and 'stud' or 'studs'
-		end
-	})
-	TargetMemory = TriggerBot:CreateSlider({
-		Name = 'Target Memory',
-		Min = 0,
-		Max = 0.25,
-		Default = 0.07,
-		Decimal = 1000,
-		Suffix = function()
-			return 'seconds'
-		end
-	})
-	CheckThrottle = TriggerBot:CreateSlider({
-		Name = 'Check Throttle',
-		Min = 0,
-		Max = 0.05,
-		Default = 0.003,
-		Decimal = 1000,
-		Suffix = function()
-			return 'seconds'
-		end
-	})
-
-	TriggerBot:Clean(lplr.CharacterAdded:Connect(function()
-		store.triggerbot.respawnUntil = tick() + 2
-		resetTarget()
-	end))
+-- Bind F4
+inputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.F4 then
+        local now = tick()
+        if now - store.triggerbot.lastToggleTime < store.triggerbot.toggleDebounce then return end
+        store.triggerbot.lastToggleTime = now
+        setEnabled(not store.triggerbot.Enabled)
+    end
 end)
 
-run(function()
-	vape.Categories.Utility:CreateModule({
-		Name = 'FTAPInfo',
-		Function = function(callback)
-			if callback then
-				notif('Fling Things and People', 'Game module loaded for place '..game.PlaceId, 5, 'assets/VapeIcon.png')
-			end
-		end,
-		Tooltip = 'Shows that the Fling Things and People module is loaded.'
-	})
+lplr.CharacterAdded:Connect(function()
+    store.triggerbot.respawnUntil = tick() + 2
+    store.triggerbot.canGrab = true
+    store.triggerbot.lastTarget = nil
 end)
+
+notif('FTAP TriggerBot', 'Module carregado com sucesso.', 5, 'assets/VapeIcon.png')
