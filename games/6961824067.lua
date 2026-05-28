@@ -89,15 +89,17 @@ local function getTarget()
     local model = result.Instance:FindFirstAncestorWhichIsA('Model')
     if not model or model == char then return nil end
 
-    local humanoid = model:FindFirstChildOfClass('Humanoid')
-    if not humanoid or humanoid.Health <= 0 then return nil end
-
+    -- NOVO: Aceita qualquer coisa que tenha HumanoidRootPart (incluindo decoys)
     local root = model:FindFirstChild('HumanoidRootPart') or model:FindFirstChild('Root')
     if not root then return nil end
+
+    -- Remove o check de Humanoid + Health pra pegar decoy
+    -- if humanoid.Health <= 0 then return nil end  ← removido
 
     if (myRoot.Position - root.Position).Magnitude > tb.maxDistance then return nil end
     if isCharacterInAnyPlot(model) then return nil end
 
+    -- Line of Sight (mantido pra não pegar através de parede)
     local losParams = RaycastParams.new()
     losParams.FilterDescendantsInstances = {char, workspace.Terrain}
     losParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -130,7 +132,7 @@ local function onHeartbeat()
     if not tb.lastTarget then return end
 
     local myRoot = getRoot()
-    local enemyRoot = tb.lastTarget:FindFirstChild('HumanoidRootPart')
+    local enemyRoot = tb.lastTarget:FindFirstChild('HumanoidRootPart') or tb.lastTarget:FindFirstChild('Root')
 
     if not myRoot or not enemyRoot or (myRoot.Position - enemyRoot.Position).Magnitude > tb.maxDistance then
         tb.lastTarget = nil
@@ -183,7 +185,7 @@ local function setEnabled(state)
     end
 end
 
--- Gamepass Reach
+-- Gamepass
 task.spawn(function()
     local gp = replicatedStorage:FindFirstChild('GamepassEvents')
     if not gp then return end
@@ -223,4 +225,4 @@ lplr.CharacterAdded:Connect(function()
     store.triggerbot.lastTarget = nil
 end)
 
-notif('FTAP TriggerBot', 'Module carregado com sucesso.', 5, 'assets/VapeIcon.png')
+notif('FTAP TriggerBot', 'Module carregado (Modo Decoy ativado)', 5, 'assets/VapeIcon.png')
