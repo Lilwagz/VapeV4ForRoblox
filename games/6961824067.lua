@@ -179,11 +179,11 @@ local function setEnabled(state)
         tb.lastTarget = nil
     else
         tb.Connection = runService.Heartbeat:Connect(onHeartbeat)
-        notif('FTAP TriggerBot', 'Ativado. F4 pra ligar/desligar.', 2, 'assets/VapeIcon.png')
+        notif('FTAP TriggerBot', 'TriggerBot ativado (F4)', 2, 'assets/VapeIcon.png')
     end
 end
 
--- Checagem de gamepass
+-- Gamepass Reach
 task.spawn(function()
     local gp = replicatedStorage:FindFirstChild('GamepassEvents')
     if not gp then return end
@@ -201,7 +201,7 @@ task.spawn(function()
     if notifier and notifier:IsA('RemoteEvent') then
         notifier.OnClientEvent:Connect(function()
             store.triggerbot.maxDistance = 29.3
-            notif('FTAP TriggerBot', 'Further Reach detectado (+9.3 studs)', 4)
+            notif('FTAP TriggerBot', 'Further Reach detectado!', 4)
         end)
     end
 end)
